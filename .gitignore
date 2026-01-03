@@ -8,3 +8,19 @@ downloaded_graphs/
 debug_filter/
 debug_screenshots/
 Debug/
+output/
+logs/
+
+# Build artifacts
+build/
+*.spec
+
+# Cache
+.ruff_cache/
+.pytest_cache/
+
+# Generated data
+processed_output/
+graph_data_storage/
+hasil_mbps.csv
+scraping_report.txt

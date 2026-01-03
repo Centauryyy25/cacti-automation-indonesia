@@ -1,6 +1,6 @@
 SCRAPING REPORT
-Date range: 2025-03-01T00:00 to 2025-04-01T00:00
-Total usernames: 16
-Successful: 15
-Failed: 1
+Date range: 2026-01-01T12:08 to 
+Total usernames: 2
+Successful: 2
+Failed: 0
 
