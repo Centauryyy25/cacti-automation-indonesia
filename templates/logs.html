@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - Cacti Automation</title>
+    <style>
+        :root { --bg: #121212; --card: rgba(22,22,26,0.9); --text: #f0f0f0; --accent: #4d84ff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; color: var(--text); padding: 2rem; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 2rem; color: var(--accent); }
+        .card { background: var(--card); padding: 1.5rem; border-radius: 12px; }
+        .back-btn { display: inline-block; padding: 0.8rem 1.5rem; background: var(--accent); color: white; text-decoration: none; border-radius: 8px; margin-bottom: 1rem; }
+        pre { background: #0a0a0a; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 70vh; font-size: 0.85rem; line-height: 1.5; }
+        .log-info { color: #3498db; }
+        .log-error { color: #e74c3c; }
+        .log-warning { color: #f39c12; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-btn">&larr; Back to Dashboard</a>
+        <h1>📋 Application Logs</h1>
+        
+        <div class="card">
+            <pre id="logContent">{% if logs %}{% for line in logs %}{{ line }}
+{% endfor %}{% else %}No logs available yet.{% endif %}</pre>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 5 seconds
+        setTimeout(() => location.reload(), 5000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cacti Data Scraper</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-primary: #121212;
+            --bg-card: rgba(22, 22, 26, 0.9);
+            --text-primary: #f0f0f0;
+            --text-secondary: #b0b0b0;
+            --accent-primary: #4d84ff;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+            --warning-color: #f39c12;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: var(--accent-primary);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+        input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.05);
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+        button {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--accent-primary), #2563eb);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(77,132,255,0.4);
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .progress-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+        .progress-bar {
+            height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-primary);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status-message {
+            padding: 0.8rem;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .status-message.running { background: rgba(52,152,219,0.1); color: #3498db; }
+        .status-message.complete { background: rgba(46,204,113,0.1); color: var(--success-color); }
+        .status-message.error { background: rgba(231,76,60,0.1); color: var(--error-color); }
+        .result {
+            display: none;
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(46,204,113,0.1);
+            border-radius: 8px;
+            text-align: center;
+        }
+        .download-options {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .download-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 1rem;
+            background: var(--success-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .download-btn:hover { transform: translateY(-2px); }
+        .download-btn.mbps { background: linear-gradient(135deg, #2ecc71, #219653); }
+        .download-btn.kbps { background: linear-gradient(135deg, #f39c12, #d68910); }
+        .download-btn.original { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-chart-line"></i> Cacti Data Scraper</h1>
+        
+        <div class="form-group">
+            <label>Target URL</label>
+            <input type="url" id="target_url" placeholder="https://your-cacti-server.com/">
+        </div>
+        
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="userLogin" placeholder="Enter username">
+        </div>
+        
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="userPass" placeholder="Enter password">
+        </div>
+        
+        <div class="form-group">
+            <label>Device Names (comma separated)</label>
+            <input type="text" id="usernames" placeholder="device1, device2, device3">
+        </div>
+        
+        <div class="form-group" style="display:flex; gap:1rem;">
+            <div style="flex:1">
+                <label>Start Date</label>
+                <input type="datetime-local" id="date1">
+            </div>
+            <div style="flex:1">
+                <label>End Date</label>
+                <input type="datetime-local" id="date2">
+            </div>
+        </div>
+        
+        <button id="runBtn"><i class="fas fa-play"></i> Run Pipeline</button>
+        
+        <div class="progress-section">
+            <div>
+                <strong>Scraping Progress</strong>
+                <span id="scrapingProgressText" style="float:right">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="scrapingProgressFill"></div>
+            </div>
+            <div class="status-message" id="scrapingStatusMessage">
+                <i class="fas fa-clock"></i> Waiting to start
+            </div>
+            
+            <div id="ocrProgressContainer" style="margin-top:1.5rem; display:none;">
+                <div>
+                    <strong>OCR Progress</strong>
+                    <span id="ocrProgressText" style="float:right">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="ocrProgressFill"></div>
+                </div>
+                <div class="status-message" id="ocrStatusMessage">
+                    <i class="fas fa-clock"></i> Waiting
+                </div>
+            </div>
+        </div>
+        
+        <div class="result" id="result">
+            <h3><i class="fas fa-check-circle"></i> Pipeline Complete!</h3>
+            <p>Select download format:</p>
+            <div class="download-options">
+                <a href="/download?format=original" class="download-btn original">
+                    <i class="fas fa-file-csv"></i> Original
+                </a>
+                <a href="/download?format=mbps" class="download-btn mbps">
+                    <i class="fas fa-tachometer-alt"></i> Mbps
+                </a>
+                <a href="/download?format=kbps" class="download-btn kbps">
+                    <i class="fas fa-signal"></i> Kbps
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const btn = document.getElementById('runBtn');
+        const resultDiv = document.getElementById('result');
+        let eventSource = null;
+
+        function updateProgress(data) {
+            if (data.scraping) {
+                const percent = Math.round((data.scraping.current / Math.max(data.scraping.total,1)) * 100);
+                document.getElementById('scrapingProgressFill').style.width = percent + '%';
+                document.getElementById('scrapingProgressText').textContent = percent + '%';
+                document.getElementById('scrapingStatusMessage').innerHTML = '<i class="fas fa-sync fa-spin"></i> ' + data.scraping.message;
+                document.getElementById('scrapingStatusMessage').className = 'status-message ' + data.scraping.status;
+            }
+            if (data.ocr && data.ocr.status !== 'idle') {
+                document.getElementById('ocrProgressContainer').style.display = 'block';
+                const ocrPercent = Math.round((data.ocr.current / Math.max(data.ocr.total,1)) * 100);
+                document.getElementById('ocrProgressFill').style.width = ocrPercent + '%';
+                document.getElementById('ocrProgressText').textContent = ocrPercent + '%';
+                document.getElementById('ocrStatusMessage').innerHTML = '<i class="fas fa-sync fa-spin"></i> ' + data.ocr.message;
+                document.getElementById('ocrStatusMessage').className = 'status-message ' + data.ocr.status;
+            }
+        }
+
+        btn.addEventListener('click', async function() {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            resultDiv.style.display = 'none';
+
+            eventSource = new EventSource('/progress');
+            eventSource.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                updateProgress(data);
+                if ((data.scraping.status === 'complete' || data.scraping.status === 'error') &&
+                    (data.ocr.status === 'complete' || data.ocr.status === 'error')) {
+                    eventSource.close();
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline';
+                    resultDiv.style.display = 'block';
+                }
+            };
+
+            try {
+                await fetch('/run_pipeline', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        date1: document.getElementById('date1').value,
+                        date2: document.getElementById('date2').value,
+                        target_url: document.getElementById('target_url').value,
+                        userLogin: document.getElementById('userLogin').value,
+                        userPass: document.getElementById('userPass').value,
+                        usernames: document.getElementById('usernames').value
+                    })
+                });
+            } catch(e) {
+                console.error(e);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline';
+            }
+        });
+
+        // Set default dates
+        const now = new Date();
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        document.getElementById('date1').value = lastMonth.toISOString().slice(0,16);
+        document.getElementById('date2').value = now.toISOString().slice(0,16);
+    </script>
+</body>
+</html>
