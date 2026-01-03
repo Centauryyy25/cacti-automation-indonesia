@@ -1,8 +1,9 @@
-import os
 import json
+import logging
+import os
 import time
 from datetime import datetime
-import logging
+
 from utils.logging_config import setup_logging
 
 # Set up logging
@@ -16,20 +17,20 @@ ERROR_LOG_FILE = os.path.join(STORAGE_DIR, "error_log.json")
 def ensure_storage_dir():
     """Make sure the storage directory exists"""
     os.makedirs(STORAGE_DIR, exist_ok=True)
-    
+
     # Create the data files if they don't exist
     for filepath in [GRAPH_DATA_FILE, ERROR_LOG_FILE]:
         if not os.path.exists(filepath):
             with open(filepath, 'w') as f:
                 json.dump([], f)
-    
+
     logger.info(f"Storage directory ready: {STORAGE_DIR}")
 
 def load_data(filepath):
     """Load data from a JSON file"""
     try:
         if os.path.exists(filepath):
-            with open(filepath, 'r') as f:
+            with open(filepath) as f:
                 return json.load(f)
         return []
     except Exception as e:
@@ -52,7 +53,7 @@ def save_graph_info(title, graph_url, local_path, keterangan="Sukses"):
     Replaces the save_to_database function
     """
     ensure_storage_dir()
-    
+
     # Create record
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     record = {
@@ -63,16 +64,16 @@ def save_graph_info(title, graph_url, local_path, keterangan="Sukses"):
         "keterangan": keterangan,
         "timestamp": timestamp
     }
-    
+
     # Load existing data
     data = load_data(GRAPH_DATA_FILE)
-    
+
     # Add new record
     data.append(record)
-    
+
     # Save updated data
     success = save_data(data, GRAPH_DATA_FILE)
-    
+
     if success:
         logger.info(f"Graph info saved: {title}, {local_path}")
         return True
@@ -86,7 +87,7 @@ def save_error(title, graph_url, local_path, error_message):
     Replaces the handle_database_error function
     """
     ensure_storage_dir()
-    
+
     # Create error record
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     error_record = {
@@ -97,16 +98,16 @@ def save_error(title, graph_url, local_path, error_message):
         "error": error_message[:500],  # Limit error message length
         "timestamp": timestamp
     }
-    
+
     # Load existing errors
     errors = load_data(ERROR_LOG_FILE)
-    
+
     # Add new error
     errors.append(error_record)
-    
+
     # Save updated error log
     success = save_data(errors, ERROR_LOG_FILE)
-    
+
     if success:
         logger.info(f"Error saved for {title}")
         return True

@@ -1,17 +1,19 @@
-import easyocr
-import cv2
-import csv
-import numpy as np
 import argparse
-from progress_tracker import progress
-import os
-import re
-from pprint import pprint
-from datetime import datetime
-import time
+import csv
 import json
 import logging
+import os
+import re
+from datetime import datetime
+
+import cv2
+import easyocr
+import numpy as np
+
+from progress_tracker import progress
 from utils.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 def ensure_dir(directory):
     if not os.path.exists(directory):
@@ -44,17 +46,6 @@ def clean_ocr_text(raw_text):
         r'\bMaxinum\b': 'Maximum',
         r'\bMaxmum\b': 'Maximum',
         r'(\d{4})[-\s](\d{3,})': r'\1-\2',
-
-        # ❗ Koreksi kata penting yang sering salah terbaca
-        r'\bCutbound\b': 'Outbound',
-        r'\bCur\s*ent\b': 'Current',
-        r'\bFron\b': 'From',
-        r'\bTo\b\s*(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})': r'To \1-\2-\3',  # Format tanggal
-        r'\bNeek\b': 'Week',
-        r'\bWeek\s+1[45]\b': lambda m: m.group(0).replace(" ", ""),  # Week 14 jadi Week14
-        r'\bCutbound\b': 'Outbound',
-        r'\bCur\s*ent\b': 'Current',
-        r'\bFron\b': 'From',
         r'\bCutbound\b': 'Outbound',
         r'\bCur\s*ent\b': 'Current',
         r'\bFron\b': 'From',
@@ -84,8 +75,6 @@ def clean_ocr_text(raw_text):
         r':\s*O0': ': 00',
         r'Week\s+(\d{2})': r'Week\1',
         r'\bPozo\b': 'Vlan',
-        r'Week\s+(\d{2})': r'Week\1',
-        r'\bPozo\b': 'Vlan',
     }
     for pattern, repl in corrections.items():
         raw_text = re.sub(pattern, repl, raw_text, flags=re.IGNORECASE)
@@ -101,7 +90,7 @@ def clean_ocr_text(raw_text):
         vlan_fallback_match = re.search(r'\d{3,4}\.\s*(\d{3,4})', raw_text)
         if vlan_fallback_match:
             result['vlan_id'] = vlan_fallback_match.group(1).strip()
-    
+
     general_patterns = {
         'service_id': r'-(\d{10,})',  # <-- TAMBAHKAN BARIS INI DENGAN 'r'
         'isp': r'isp-cust(?:-pre)?\s*(.*?)\s*\/',
@@ -126,7 +115,7 @@ def clean_ocr_text(raw_text):
         current_match = re.search(r'Current:?\s*(\d+(?:\.\d+)?(?:\s*[kM])?)', text_chunk, re.IGNORECASE)
         average_match = re.search(r'Average:?\s*(\d+(?:\.\d+)?(?:\s*[kM])?)', text_chunk, re.IGNORECASE)
         max_match = re.search(r'Maximum:?\s*(\d+(?:\.\d+)?(?:\s*[kM])?)', text_chunk, re.IGNORECASE)
-        
+
         data['current'] = current_match.group(1).strip() if current_match else 'N/A'
         data['average'] = average_match.group(1).strip() if average_match else 'N/A'
         data['max'] = max_match.group(1).strip() if max_match else 'N/A'
@@ -148,7 +137,7 @@ def clean_ocr_text(raw_text):
     logger.debug("--- Hasil Ekstraksi ---")
     logger.debug(result)
     logger.debug("--------------------------")
-    
+
     if 'inbound' in result or 'outbound' in result:
         return result
     else:
@@ -167,9 +156,9 @@ def save_processed_data(data, output_dir="processed_output", custom_folder=None)
         final_output_dir = os.path.join(custom_folder, "processed_output")
     else:
         final_output_dir = output_dir
-    
+
     ensure_dir(final_output_dir)
-    
+
     filename = f"{final_output_dir}/processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
@@ -198,10 +187,12 @@ def preprocess_image(image_path, target_width=2000):
 
     return img
 
-def image_to_text(image_path, languages=['en'], use_gpu=False):
+def image_to_text(image_path, languages=None, use_gpu=False):
+    if languages is None:
+        languages = ['en']
     progress.ocr['current_file'] = os.path.basename(image_path)
     progress.ocr['message'] = f'Memproses {progress.ocr["current_file"]}'
-    
+
     if not hasattr(image_to_text, 'reader'):
         progress.ocr['message'] = 'Menyiapkan model OCR...'
         image_to_text.reader = easyocr.Reader(
@@ -211,7 +202,6 @@ def image_to_text(image_path, languages=['en'], use_gpu=False):
             download_enabled=True
         )
     processed_img = preprocess_image(image_path)
-    start_time = time.time()
     results = image_to_text.reader.readtext(
         processed_img,
         decoder='greedy',
@@ -222,10 +212,10 @@ def image_to_text(image_path, languages=['en'], use_gpu=False):
     progress.ocr['message'] = f'Selesai memproses {progress.ocr["current_file"]}'
     return " ".join(results)
 
-def process_images_in_folder(folder, output_dir, lang, use_gpu):    
+def process_images_in_folder(folder, output_dir, lang, use_gpu):
     supported_exts = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')
     files = [f for f in os.listdir(folder) if f.lower().endswith(supported_exts)]
-    
+
     progress.ocr.update({
     'current': 0,
     'total': len(files),
@@ -233,7 +223,7 @@ def process_images_in_folder(folder, output_dir, lang, use_gpu):
     'message': 'Menyiapkan proses OCR...',
     'current_file': ''
     })
-    
+
     all_results = {}
     for i, filename in enumerate(files, 1):
         progress.ocr.update({
@@ -243,7 +233,7 @@ def process_images_in_folder(folder, output_dir, lang, use_gpu):
             'message': 'Menyiapkan proses OCR...',
             'current_file': ''
         })
-        
+
         img_path = os.path.join(folder, filename)
         try:
             extracted_text = image_to_text(img_path, lang.split(','), use_gpu)
@@ -252,7 +242,7 @@ def process_images_in_folder(folder, output_dir, lang, use_gpu):
         except Exception as e:
             progress.ocr['message'] = f'Error memproses {filename}: {str(e)}'
             continue
-    
+
     progress.ocr['status'] = 'complete'
     return all_results
 
@@ -264,12 +254,12 @@ def convert_json_to_csv(json_file_path, csv_file_path, custom_folder=None):
     if custom_folder:
         csv_filename = os.path.basename(csv_file_path)
         csv_file_path = os.path.join(custom_folder, csv_filename)
-    
+
     # Pastikan direktori ada
     ensure_dir(os.path.dirname(csv_file_path))
 
     # Baca file JSON
-    with open(json_file_path, 'r', encoding='utf-8') as file:
+    with open(json_file_path, encoding='utf-8') as file:
         data = json.load(file)
 
     # Buka file CSV dan tulis header
@@ -311,22 +301,22 @@ def process_images_and_save_csv(folder, custom_output_folder, lang='en', use_gpu
     """
     # Proses OCR
     all_results = process_images_in_folder(folder, "processed_output", lang, use_gpu)
-    
+
     if not all_results:
         logger.warning("Tidak ada hasil OCR yang diperoleh")
         return None
-    
+
     # Simpan JSON ke subfolder processed_output
     json_output_dir = os.path.join(custom_output_folder, "processed_output")
     json_path = save_processed_data(all_results, json_output_dir)
-    
+
     # Generate nama CSV berdasarkan folder timestamp
     folder_name = os.path.basename(custom_output_folder)
     csv_filename = f"hasil_{folder_name}.csv"
-    
+
     # Simpan CSV langsung ke folder timestamp (bukan subfolder)
     csv_path = convert_json_to_csv(json_path, csv_filename, custom_folder=custom_output_folder)
-    
+
     logger.info(f"File CSV tersimpan di: {csv_path}")
     return csv_path
 
@@ -337,7 +327,7 @@ def process_images_in_folder_with_custom_output(folder, custom_output_folder, la
     """
     supported_exts = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')
     files = [f for f in os.listdir(folder) if f.lower().endswith(supported_exts)]
-    
+
     progress.ocr.update({
         'current': 0,
         'total': len(files),
@@ -369,15 +359,15 @@ def process_images_in_folder_with_custom_output(folder, custom_output_folder, la
             continue
 
     progress.ocr['status'] = 'complete'
-    
+
     # Simpan hasil ke folder custom
     json_path = save_processed_data(all_results, custom_folder=custom_output_folder)
-    
+
     # Generate nama CSV berdasarkan folder timestamp
     folder_name = os.path.basename(custom_output_folder)
     csv_filename = f"hasil_{folder_name}.csv"
     csv_path = convert_json_to_csv(json_path, csv_filename, custom_folder=custom_output_folder)
-    
+
     return all_results, json_path, csv_path
 
 if __name__ == "__main__":
@@ -428,4 +418,3 @@ if __name__ == "__main__":
         logger.info(f"CSV tersimpan di: {csv_path}")
     except Exception as e:
         logger.error(f"Gagal konversi: {e}")
-logger = logging.getLogger(__name__)

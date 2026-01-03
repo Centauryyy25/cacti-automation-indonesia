@@ -10,13 +10,11 @@ Usage:
 from __future__ import annotations
 
 import time
-from collections import defaultdict
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
 from functools import wraps
 from threading import Lock
-from typing import Callable, Iterator
 
 from flask import Blueprint, Response
 
@@ -31,11 +29,11 @@ class Counter:
     labels: dict = field(default_factory=dict)
     _value: float = 0.0
     _lock: Lock = field(default_factory=Lock)
-    
+
     def inc(self, value: float = 1.0) -> None:
         with self._lock:
             self._value += value
-    
+
     @property
     def value(self) -> float:
         return self._value
@@ -49,19 +47,19 @@ class Gauge:
     labels: dict = field(default_factory=dict)
     _value: float = 0.0
     _lock: Lock = field(default_factory=Lock)
-    
+
     def set(self, value: float) -> None:
         with self._lock:
             self._value = value
-    
+
     def inc(self, value: float = 1.0) -> None:
         with self._lock:
             self._value += value
-    
+
     def dec(self, value: float = 1.0) -> None:
         with self._lock:
             self._value -= value
-    
+
     @property
     def value(self) -> float:
         return self._value
@@ -78,10 +76,10 @@ class Histogram:
     _count: int = 0
     _bucket_counts: dict = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock)
-    
+
     def __post_init__(self):
-        self._bucket_counts = {b: 0 for b in self.buckets}
-    
+        self._bucket_counts = dict.fromkeys(self.buckets, 0)
+
     def observe(self, value: float) -> None:
         with self._lock:
             self._sum += value
@@ -89,11 +87,11 @@ class Histogram:
             for bucket in self.buckets:
                 if value <= bucket:
                     self._bucket_counts[bucket] += 1
-    
+
     @property
     def sum(self) -> float:
         return self._sum
-    
+
     @property
     def count(self) -> int:
         return self._count
@@ -101,11 +99,11 @@ class Histogram:
 
 class MetricsRegistry:
     """Registry for all metrics."""
-    
+
     def __init__(self):
         self._metrics: dict[str, Counter | Gauge | Histogram] = {}
         self._lock = Lock()
-    
+
     def counter(self, name: str, help: str, labels: dict = None) -> Counter:
         key = self._make_key(name, labels)
         if key not in self._metrics:
@@ -113,7 +111,7 @@ class MetricsRegistry:
                 if key not in self._metrics:
                     self._metrics[key] = Counter(name, help, labels or {})
         return self._metrics[key]
-    
+
     def gauge(self, name: str, help: str, labels: dict = None) -> Gauge:
         key = self._make_key(name, labels)
         if key not in self._metrics:
@@ -121,34 +119,34 @@ class MetricsRegistry:
                 if key not in self._metrics:
                     self._metrics[key] = Gauge(name, help, labels or {})
         return self._metrics[key]
-    
-    def histogram(self, name: str, help: str, labels: dict = None, 
+
+    def histogram(self, name: str, help: str, labels: dict = None,
                   buckets: tuple = None) -> Histogram:
         key = self._make_key(name, labels)
         if key not in self._metrics:
             with self._lock:
                 if key not in self._metrics:
                     self._metrics[key] = Histogram(
-                        name, help, 
+                        name, help,
                         buckets=buckets or Histogram.buckets,
                         labels=labels or {}
                     )
         return self._metrics[key]
-    
+
     def _make_key(self, name: str, labels: dict = None) -> str:
         if labels:
             label_str = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
             return f"{name}{{{label_str}}}"
         return name
-    
+
     def format_prometheus(self) -> str:
         """Format all metrics in Prometheus text format."""
         lines = []
         seen_help = set()
-        
-        for key, metric in sorted(self._metrics.items()):
+
+        for _key, metric in sorted(self._metrics.items()):
             name = metric.name
-            
+
             # Add HELP and TYPE only once per metric name
             if name not in seen_help:
                 lines.append(f"# HELP {name} {metric.help}")
@@ -159,12 +157,12 @@ class MetricsRegistry:
                 elif isinstance(metric, Histogram):
                     lines.append(f"# TYPE {name} histogram")
                 seen_help.add(name)
-            
+
             # Format labels
             labels_str = ""
             if metric.labels:
                 labels_str = "{" + ",".join(f'{k}="{v}"' for k, v in metric.labels.items()) + "}"
-            
+
             # Format value
             if isinstance(metric, (Counter, Gauge)):
                 lines.append(f"{name}{labels_str} {metric.value}")
@@ -177,7 +175,7 @@ class MetricsRegistry:
                     lines.append(f"{name}_bucket{bucket_labels} {count}")
                 lines.append(f"{name}_sum{labels_str} {metric.sum}")
                 lines.append(f"{name}_count{labels_str} {metric.count}")
-        
+
         return "\n".join(lines) + "\n"
 
 

@@ -7,23 +7,22 @@ Security hardened with:
 - Production-safe defaults
 """
 
-from flask import Flask, render_template, request, send_file, jsonify, Response
-import os
-import sys
-from flask_cors import CORS
-from datetime import datetime, timedelta
 import json
+import os
 import time
-import logging
-from threading import Thread, Lock
+from datetime import datetime, timedelta
+from threading import Lock, Thread
+
+from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask_cors import CORS
 
 from tracking.progress import progress
 from utils.logging_config import setup_logging
-from utils.summary_parser import load_summary, list_runs, tail_app_log
+from utils.summary_parser import list_runs, load_summary, tail_app_log
 
 # Import configuration
 try:
-    from config import settings, validate_cacti_url, mask_sensitive
+    from config import mask_sensitive, settings, validate_cacti_url
 except ImportError:
     # Fallback if config not yet created
     class _FallbackSettings:
@@ -168,10 +167,10 @@ def readiness_check():
         "static": os.path.exists(STATIC_DIR),
         "output_dir": os.path.exists(os.path.join(PROJECT_ROOT, "output")) or True,  # Optional
     }
-    
+
     all_ready = all(checks.values())
     status_code = 200 if all_ready else 503
-    
+
     return jsonify({
         "status": "ready" if all_ready else "not_ready",
         "checks": checks,
@@ -242,13 +241,13 @@ def run_pipeline():
         date1 = data.get('date1')
         date2 = data.get('date2')
         target_url = data.get('target_url')
-        
+
         # SECURITY: Validate URL against allowlist (SSRF protection)
         is_valid, error_msg = validate_cacti_url(target_url)
         if not is_valid:
             app.logger.warning("URL validation failed: %s (URL: %s)", error_msg, target_url)
             return jsonify({"status": "error", "message": f"Invalid URL: {error_msg}"}), 400
-        
+
         userLogin = data.get('userLogin')
         userpass = data.get('userPass')
 
@@ -278,7 +277,7 @@ def download_csv():
         csv_format = request.args.get('format', 'mbps').lower()
         if csv_format not in ['original', 'mbps', 'kbps']:
             csv_format = 'mbps'
-        
+
         target_folder = progress.scraping.get('current_folder')
         # Normalize to absolute path rooted at project directory
         if target_folder and not os.path.isabs(target_folder):
@@ -297,14 +296,14 @@ def download_csv():
                 return "Folder output tidak ditemukan", 404
 
         folder_name = os.path.basename(target_folder)
-        
+
         # Map format to filename pattern
         format_patterns = {
             'original': [f"hasil_original_{folder_name}.csv", f"hasil_{folder_name}.csv"],
             'mbps': [f"hasil_mbps_{folder_name}.csv"],
             'kbps': [f"hasil_kbps_{folder_name}.csv"]
         }
-        
+
         csv_files = format_patterns.get(csv_format, format_patterns['mbps'])
 
         csv_path = None
@@ -345,22 +344,22 @@ def available_downloads():
                 return jsonify({"available": [], "folder": None}), 200
 
         folder_name = os.path.basename(target_folder)
-        
+
         available = []
         format_files = {
             'original': [f"hasil_original_{folder_name}.csv", f"hasil_{folder_name}.csv"],
             'mbps': [f"hasil_mbps_{folder_name}.csv"],
             'kbps': [f"hasil_kbps_{folder_name}.csv"]
         }
-        
+
         for fmt, patterns in format_files.items():
             for pattern in patterns:
                 if os.path.exists(os.path.join(target_folder, pattern)):
                     available.append(fmt)
                     break
-        
+
         return jsonify({"available": available, "folder": folder_name}), 200
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -393,7 +392,7 @@ def logs_page():
         if run:
             spath = os.path.join(base, run, 'summary.log')
             if os.path.exists(spath):
-                with open(spath, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(spath, encoding='utf-8', errors='ignore') as f:
                     summary_log = f.read()
         return render_template('logs.html', runs=runs, active_run=run, summary=summary, summary_log=summary_log)
     except Exception as e:
@@ -410,7 +409,7 @@ def logs_page_run(run_id):
         summary_log = None
         spath = os.path.join(base, run_id, 'summary.log')
         if os.path.exists(spath):
-            with open(spath, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(spath, encoding='utf-8', errors='ignore') as f:
                 summary_log = f.read()
         return render_template('logs.html', runs=runs, active_run=run_id, summary=summary, summary_log=summary_log)
     except Exception as e:
@@ -426,8 +425,8 @@ if __name__ == '__main__':
     debug_mode = getattr(settings, 'DEBUG', False)
     host = getattr(settings, 'HOST', '127.0.0.1')
     port = getattr(settings, 'PORT', 5000)
-    
+
     if debug_mode:
         app.logger.warning("Running in DEBUG mode. Do not use in production!")
-    
+
     app.run(debug=debug_mode, host=host, port=port, use_reloader=False)

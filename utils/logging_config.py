@@ -7,12 +7,11 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from logging.handlers import TimedRotatingFileHandler
-import json
 from datetime import datetime
-from typing import Optional
+from logging.handlers import TimedRotatingFileHandler
 
 
 def setup_logging(app_name: str = "cacti", log_dir: str = "Debug", level: int = logging.INFO,

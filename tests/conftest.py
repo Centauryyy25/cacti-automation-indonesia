@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+
 import pytest
 
 # Add project root to path
@@ -55,17 +56,17 @@ def mock_settings(monkeypatch):
         REQUEST_TIMEOUT = 5
         RETRY_MAX_ATTEMPTS = 2
         OUTPUT_DIR = "test_output"
-        
+
         @property
         def allowed_urls_list(self):
             return ["http://test.example.com/"]
-        
+
         @property
         def cors_origins_list(self):
             return ["http://localhost:3000"]
-        
+
         def validate_url(self, url):
             return url.startswith("http://test.example.com/")
-    
+
     mock = MockSettings()
     return mock

@@ -9,19 +9,18 @@ Outputs are stored under `output/<timestamp>/` with:
 
 from __future__ import annotations
 
+import csv as _csv
+import glob
 import logging
 import os
 import time
 from datetime import datetime
-import glob
-import csv as _csv
 
+from cleaning.csv_generator import generate_all_csv_variants
+from ocr.ocr_processor import process_images_in_folder_with_custom_output
 from scraping.scraper import login_and_scrape
-from cleaning.csv_generator import process_csv, generate_all_csv_variants
 from tracking.progress import progress
 from utils.logging_config import setup_logging
-from ocr.ocr_processor import process_images_in_folder_with_custom_output
-
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +145,7 @@ def step2_ocr_images(folder: str | None = None, csv_output: str | None = None):
 
 def step3_clean_csv(csv_input: str | None = None, csv_output: str | None = None):
     """Generate 3 CSV variants: original, Mbps, and Kbps.
-    
+
     Output files:
     - hasil_original_<timestamp>.csv - Raw values as extracted
     - hasil_mbps_<timestamp>.csv - All bandwidth values in Mbps
@@ -171,12 +170,12 @@ def step3_clean_csv(csv_input: str | None = None, csv_output: str | None = None)
         # Generate all 3 CSV variants using the new generator
         # Returns tuple: (original_path, mbps_path, kbps_path)
         original_csv, mbps_csv, kbps_csv = generate_all_csv_variants(csv_input, active_folder)
-        
+
         logger.info("Generated CSV files:")
         logger.info("  Original: %s", original_csv)
         logger.info("  Mbps:     %s", mbps_csv)
         logger.info("  Kbps:     %s", kbps_csv)
-        
+
         # For backward compatibility, set csv_output to mbps version
         csv_output = mbps_csv
 
@@ -191,7 +190,7 @@ def step3_clean_csv(csv_input: str | None = None, csv_output: str | None = None)
             ocr_count = 0
             if json_files:
                 import json as _json
-                with open(json_files[0], "r", encoding="utf-8") as jf:
+                with open(json_files[0], encoding="utf-8") as jf:
                     data = _json.load(jf)
                     if isinstance(data, dict):
                         ocr_count = len(data)
@@ -223,7 +222,7 @@ def step3_clean_csv(csv_input: str | None = None, csv_output: str | None = None)
                 fail_reasons = []
                 if os.path.exists(report_path):
                     try:
-                        with open(report_path, 'r', encoding='utf-8') as rf:
+                        with open(report_path, encoding='utf-8') as rf:
                             for line in rf:
                                 line = line.strip()
                                 if line.startswith('Successful:'):
@@ -257,7 +256,7 @@ def step3_clean_csv(csv_input: str | None = None, csv_output: str | None = None)
                     'total_items': int(total_usernames),
                     'success_count': int(success_count),
                     'fail_count': int(fail_count),
-                    'fail_reasons': sorted(list(set(fail_reasons)))[:25],
+                    'fail_reasons': sorted(set(fail_reasons))[:25],
                     'start_time': progress.scraping.get('start_time'),
                     'end_time': datetime.now().isoformat(timespec='seconds'),
                     'raw_images_scraped': int(scraped),

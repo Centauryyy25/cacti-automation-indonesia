@@ -6,26 +6,27 @@ Security and reliability improvements:
 - Integration with centralized logging
 """
 
-from graph_storage import save_graph_info, save_error
+import logging
 import os
+import re
+import time
+import traceback
+from datetime import datetime
+
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-import re
-
-from progress_tracker import progress
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.chrome.options import Options
-import traceback
-import time
-from datetime import datetime
-import logging
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from urllib3.util.retry import Retry
+from webdriver_manager.chrome import ChromeDriverManager
+
+from graph_storage import save_error, save_graph_info
+from progress_tracker import progress
 
 # Import configuration
 try:
@@ -50,7 +51,7 @@ def get_chrome_options() -> Options:
     chrome_options.add_argument("--disable-infobars")
     chrome_options.add_argument("--disable-notifications")
     chrome_options.add_argument("--incognito")
-    
+
     # Headless mode from config
     if getattr(settings, 'SELENIUM_HEADLESS', False):
         chrome_options.add_argument("--headless=new")
@@ -59,14 +60,14 @@ def get_chrome_options() -> Options:
         logger.info("Running Chrome in headless mode")
     else:
         chrome_options.add_argument("--start-maximized")
-    
+
     return chrome_options
 
 
 def get_requests_session() -> requests.Session:
     """Create a requests session with retry and timeout configuration."""
     session = requests.Session()
-    
+
     # Configure retry strategy with exponential backoff
     retry_strategy = Retry(
         total=getattr(settings, 'RETRY_MAX_ATTEMPTS', 3),
@@ -74,11 +75,11 @@ def get_requests_session() -> requests.Session:
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["HEAD", "GET", "OPTIONS"]
     )
-    
+
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
-    
+
     return session
 
 def sanitize_filename(title: str) -> str:
@@ -92,23 +93,23 @@ def save_graph_image(graph_url: str, title: str, driver, custom_folder: str | No
     """Download graph image with timeout and retry."""
     try:
         filename = f"{sanitize_filename(title)}.png"
-        
+
         if custom_folder:
             local_path = os.path.join(custom_folder, filename)
         else:
             local_path = os.path.join("downloaded_graphs", filename)
-        
+
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
         # Use configured session with retry
         session = get_requests_session()
-        
+
         # Transfer cookies from Selenium
         for cookie in driver.get_cookies():
             session.cookies.set(cookie['name'], cookie['value'])
 
         logger.info(f"Downloading image from {graph_url}...")
-        
+
         # Use configured timeout
         timeout = getattr(settings, 'REQUEST_TIMEOUT', 30)
         response = session.get(graph_url, timeout=timeout)
@@ -129,11 +130,11 @@ def save_graph_image(graph_url: str, title: str, driver, custom_folder: str | No
 def extract_short_title(full_title: str) -> str:
     """
     Extract a meaningful short title from CACTI graph full title.
-    
+
     Examples:
         Input:  "Zooming Graph 'bndg.ro.corp2 - Bundle-Ether4.1562 - isp-cust-pre 35230536 - fsr-bsibatununggallx - 10'"
         Output: "fsr-bsibatununggallx"
-        
+
         Input:  "Zooming Graph 'router - isp-cust 12345 - customer-name'"
         Output: "customer-name"
     """
@@ -141,13 +142,13 @@ def extract_short_title(full_title: str) -> str:
         # Remove 'Zooming Graph' prefix and quotes
         cleaned = full_title.replace("Zooming Graph", "").strip()
         cleaned = cleaned.strip("'\"")
-        
+
         # Split by ' - ' separator
         parts = [p.strip() for p in cleaned.split(' - ') if p.strip()]
-        
+
         if not parts:
             return full_title
-        
+
         # Strategy 1: Look for customer identifier patterns (fsr-*, cust-*, etc.)
         # These are typically the most meaningful identifiers
         customer_patterns = [
@@ -156,7 +157,7 @@ def extract_short_title(full_title: str) -> str:
             r'\bcustomer-[\w]+', # customer-name
             r'\bisp-cust\s+\d+', # isp-cust 35230536
         ]
-        
+
         for pattern in customer_patterns:
             for part in reversed(parts):  # Search from end
                 match = re.search(pattern, part, re.IGNORECASE)
@@ -164,7 +165,7 @@ def extract_short_title(full_title: str) -> str:
                     # For patterns like "isp-cust-pre 35230536 - fsr-xyz", prefer fsr-xyz
                     if pattern.startswith(r'\bfsr') or pattern.startswith(r'\bcust'):
                         return match.group(0)
-        
+
         # Strategy 2: If last part is just a number, use second-to-last
         # Example: "fsr-bsibatununggallx - 10" -> "fsr-bsibatununggallx"
         last_part = parts[-1]
@@ -180,11 +181,11 @@ def extract_short_title(full_title: str) -> str:
                         return sp
                 return second_parts[-1]
             return second_last
-        
+
         # Strategy 3: Return last part (original behavior)
         short_title = last_part.replace("'", "").replace('"', '')
         return short_title
-        
+
     except Exception as e:
         logger.warning(f"Failed to extract short title: {str(e)}")
         return full_title
@@ -212,7 +213,7 @@ def check_and_click_zoom(driver, username):
             "Tidak ada data",
             "No matching records found"
         ]
-        
+
         for marker in no_data_markers:
             if marker in driver.page_source:
                 logger.warning(f"Data tidak tersedia untuk {username}")
@@ -245,7 +246,7 @@ def check_and_click_zoom(driver, username):
                     zoom_link = WebDriverWait(driver, 1).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, selector["value"]))
                     )
-                
+
                 logger.info(f"[DEBUG] Link Zoom ditemukan dengan {selector['type']}: {selector['value']}")
                 return True, zoom_link
             except Exception as e:
@@ -257,7 +258,7 @@ def check_and_click_zoom(driver, username):
         if graph_images:
             logger.warning(f"Grafik ditemukan tapi tanpa link Zoom untuk {username}")
             return False, "Grafik ada tetapi tidak ada link Zoom"
-        
+
         return False, "Link Zoom tidak ditemukan dengan semua selector"
 
     except Exception as e:
@@ -288,13 +289,13 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
 
     progress.scraping['total'] = len(usernames)
     # Tentukan folder untuk menyimpan gambar lokal
-    
+
 
     try:
         logger.info("Memulai WebDriver...")
         chrome_options = get_chrome_options()  # Use config-driven options
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        
+
         # Use configurable timeout
         wait_timeout = getattr(settings, 'SELENIUM_WAIT_TIMEOUT', 15)
         wait = WebDriverWait(driver, wait_timeout)
@@ -344,11 +345,11 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
             timestamp_str = now.strftime("%Y-%m-%d_%H-%M-%S")
             base_folder = "downloaded_graphs"
             custom_folder = os.path.join(base_folder, f"scraping_{timestamp_str}")
-        
+
         # Pastikan folder ada
         os.makedirs(custom_folder, exist_ok=True)
         logger.info(f"Gambar akan disimpan di: {custom_folder}")
-        
+
         # Set folder global untuk digunakan di fungsi lain
         global current_scraping_folder
         current_scraping_folder = custom_folder
@@ -380,7 +381,7 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                 # driver.save_screenshot(f"debug_{username}_before_go.png")
                 go_button.click()
                 logger.info("[DEBUG] Tombol Go diklik")
-    
+
                 # [Sebelum mencari link Zoom]
                 logger.info(f"[DEBUG] Memeriksa ketersediaan data untuk {username}")
 
@@ -390,7 +391,7 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                 if not zoom_found:
                     error_msg = f"Gagal menemukan Zoom untuk {username}: {zoom_result}"
                     logger.error(f"{error_msg}")
-                    
+
                     # IMPROVEMENT: Store diagnostics in per-run folder
                     # Use custom_folder if available, otherwise fallback to no_zoom_reports
                     if custom_folder:
@@ -398,20 +399,20 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                     else:
                         no_zoom_dir = "no_zoom_reports"
                     os.makedirs(no_zoom_dir, exist_ok=True)  # exist_ok=True agar tidak error jika folder sudah ada
-                    
+
                     # 2. Simpan screenshot ke folder baru
                     screenshot_path = os.path.join(no_zoom_dir, f"no_zoom_{username}.png")
                     driver.save_screenshot(screenshot_path)
-                    
+
                     # (Opsional) Simpan HTML ke folder yang sama
                     # html_path = os.path.join(no_zoom_dir, f"no_zoom_{username}_page.html")
                     # with open(html_path, "w", encoding="utf-8") as f:
                     #     f.write(driver.page_source)
-                    
+
                     # Simpan detail HTML untuk analisis
                     # with open(f"no_zoom_{username}_page.html", "w", encoding="utf-8") as f:
                     #     f.write(driver.page_source)
-                    
+
                     save_error(f"NoZoom-{username}", driver.current_url, f"no_zoom_{username}.png", error_msg)
                     results["failed"] += 1
                     results["errors"].append({"username": username, "error": error_msg})
@@ -432,10 +433,10 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                     results["errors"].append({"username": username, "error": error_msg})
                     continue
 
-            except Exception as e:
+            except Exception:
                 error_msg = f"Gagal Menemukan {username}"
                 logger.error(f"{error_msg}")
-                
+
                 # Simpan error ke database
                 short_title = f"Error-{username}"
                 save_error(f"NoZoom-{username}", driver.current_url, f"no_zoom_{username}.png", error_msg)
@@ -472,11 +473,11 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                     EC.presence_of_element_located((By.XPATH, "//td[contains(., 'Zooming Graph')]"))
                 )
                 title_text = td_element.text.strip()
-                
+
                 # Use username as the filename since it's the reliable identifier
                 # Example: fsr-bsimanyarlx, fsr-bsibatununggallx
                 short_title = username
-                
+
                 logger.info(f"HASIL Username: {username}")
                 logger.info(f"Judul pendek (filename): {short_title}")
                 logger.info(f"Judul asli CACTI: {title_text}")
@@ -499,7 +500,7 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
                 logger.error(f"{error_msg}")
                 results["failed"] += 1
                 results["errors"].append({"username": username, "error": error_msg})
-                continue                 
+                continue
 
 
             # Klik Preview Mode (keluar dari blok try-except atas)
@@ -521,7 +522,7 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
 
                 time.sleep(2)
 
-            except Exception as e:
+            except Exception:
                 logger.error(f"Gagal klik Preview Mode untuk {username}. Lanjut username berikutnya...")
                 continue
 
@@ -542,29 +543,29 @@ def login_and_scrape(date1="2025-03-01 00:00", date2="2025-04-01 00:00", target_
 
         # Ganti bagian ini di akhir fungsi login_and_scrape():
         with open("scraping_report.txt", "w") as report_file:
-            report_file.write(f"SCRAPING REPORT\n")
+            report_file.write("SCRAPING REPORT\n")
             report_file.write(f"Date range: {date1} to {date2}\n")
             report_file.write(f"Total usernames: {len(usernames)}\n")
             report_file.write(f"Successful: {results['success']}\n")
             report_file.write(f"Failed: {results['failed']}\n\n")
-            
+
             # Perbaikan: gunakan data yang benar
             processed_usernames = set(results["processed_usernames"])
             all_usernames = set(usernames)
             unprocessed = all_usernames - processed_usernames
-            
+
             if unprocessed:
                 report_file.write("UNPROCESSED USERNAMES:\n")
                 for u in unprocessed:
                     report_file.write(f"{u}: Tidak diproses sama sekali (missed in loop)\n")
                 report_file.write("\n")
-            
+
             if results["errors"]:
                 report_file.write("ERROR DETAILS:\n")
                 for error in results["errors"]:
                     report_file.write(f"{error['username']}: {error['error']}\n")
-                                                                                            
-    
+
+
     except Exception as e:
         progress.scraping['message'] = f'Error saat memproses {username}: {str(e)}'
         traceback.print_exc()
